@@ -1,17 +1,13 @@
-"""ShortcutManager（M2）：pynput 全局热键。
+"""热键体系（M2+）：多热键监听 + 可动态重装（设置面板改键后生效）。
 
-权限：macOS 需「辅助功能」（系统设置 → 隐私与安全性 → 辅助功能 →
-勾选 snap-ocr.app 或运行它的终端）。AXIsProcessTrusted 只读预检不弹窗。
+权限：macOS 需「辅助功能」。AXIsProcessTrusted 只读预检不弹窗。
 
 线程模型：pynput 回调发生在其监听线程，直接触碰 Qt 对象是未定义行为——
-必须经 Qt Signal 桥接（跨线程 emit 自动走 QueuedConnection 回主线程）。
+经 Qt Signal(object) 桥接（跨线程 emit 自动 QueuedConnection 回主线程，
+载荷是 callable，主线程侧统一 invoke）。
 """
 
 from PySide6.QtCore import QObject, Signal
-
-from app.config import Settings
-
-DEFAULT_HOTKEY = "<alt>+<shift>+o"   # ⌥⇧O，可用 SNAP_HOTKEY 覆盖
 
 
 def has_ax_permission() -> bool:
@@ -27,18 +23,26 @@ def has_ax_permission() -> bool:
 class _HotkeyBridge(QObject):
     """pynput 线程 → Qt 主线程的唯一通道。"""
 
-    triggered = Signal()
+    triggered = Signal(object)   # 载荷为 callable
+
+    def __init__(self):
+        super().__init__()
+        self.triggered.connect(lambda fn: fn())
 
 
 class ShortcutManager:
-    """持有一个 GlobalHotKeys 监听；触发即回调（已 marshal 到主线程）。"""
+    """多热键监听：{pynput 热键串: 无参回调}；触发即回调（已 marshal 主线程）。"""
 
-    def __init__(self, hotkey_str: str, callback):
-        self._bridge = _HotkeyBridge()
-        self._bridge.triggered.connect(callback)
+    def __init__(self, hotkeys: dict[str, object]):
+        if not hotkeys:
+            raise ValueError("hotkeys 不能为空")
         from pynput import keyboard
 
-        self._listener = keyboard.GlobalHotKeys({hotkey_str: self._bridge.triggered.emit})
+        self._bridge = _HotkeyBridge()
+        self._listener = keyboard.GlobalHotKeys({
+            key: (lambda fn=cb: self._bridge.triggered.emit(fn))
+            for key, cb in hotkeys.items()
+        })
 
     def start(self) -> None:
         self._listener.start()
@@ -59,13 +63,30 @@ class ShortcutManager:
             return False
 
 
-def setup_hotkey(settings: Settings, callback) -> "ShortcutManager | None":
-    """main 接线用：有权限→启动监听；无权限→返回 None（由调用方提示）。"""
-    if not has_ax_permission():
-        return None
-    hotkey_str = settings.hotkey or DEFAULT_HOTKEY
-    if not ShortcutManager.validate(hotkey_str):
-        raise ValueError(f"热键配置无法解析: {hotkey_str!r}（pynput 语法，如 <alt>+<shift>+o）")
-    manager = ShortcutManager(hotkey_str, callback)
-    manager.start()
-    return manager
+class HotkeyController:
+    """按当前 Settings 装配热键；设置变更后 rebuild() 即换绑生效。"""
+
+    def __init__(self, action_dispatcher):
+        """action_dispatcher(action: str)：热键触发时回调（主线程）。"""
+        self._dispatch = action_dispatcher
+        self._manager: ShortcutManager | None = None
+
+    def rebuild(self) -> bool:
+        """重装热键。返回是否处于可用状态（有权限且有有效热键）。"""
+        from app.config import get_settings
+
+        if self._manager is not None:
+            self._manager.stop()
+            self._manager = None
+        if not has_ax_permission():
+            return False
+        s = get_settings()
+        hotkeys: dict[str, object] = {}
+        for key_str, action in ((s.hotkey, "copy"), (s.hotkey_ocr, "ocr")):
+            if key_str and ShortcutManager.validate(key_str):
+                hotkeys[key_str] = lambda a=action: self._dispatch(a)
+        if not hotkeys:
+            return False
+        self._manager = ShortcutManager(hotkeys)
+        self._manager.start()
+        return True

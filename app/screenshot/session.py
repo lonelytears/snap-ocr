@@ -32,9 +32,11 @@ class ScreenshotSession(QObject):
 
     finished = Signal(object)  # SessionResult
 
-    def __init__(self, overlay_window, parent: QObject | None = None):
+    def __init__(self, overlay_window, preferred_action: str = "copy",
+                 parent: QObject | None = None):
         super().__init__(parent)
         self._overlay = overlay_window
+        self._preferred = preferred_action   # 手势完成（双击/回车）的默认动作
         self._state = SessionState.CAPTURING
         canvas = overlay_window.canvas
         canvas.double_click_complete.connect(self.complete)
@@ -61,7 +63,7 @@ class ScreenshotSession(QObject):
         self._teardown()
         self.finished.emit(SessionResult(cancelled=True))
 
-    def complete(self, action: str = "copy") -> None:
+    def complete(self, action: str | None = None) -> None:
         if self._state is not SessionState.SELECTED and \
                 self._state is not SessionState.SELECTING:
             return
@@ -69,7 +71,8 @@ class ScreenshotSession(QObject):
         image = self._overlay.canvas.render_final()
         self._teardown()
         self.finished.emit(
-            SessionResult(image=image, cancelled=image is None, action=action)
+            SessionResult(image=image, cancelled=image is None,
+                          action=action or self._preferred)
         )
 
     def _teardown(self) -> None:
@@ -88,7 +91,7 @@ class ScreenshotManager(QObject):
     def is_active(self) -> bool:
         return self._active is not None
 
-    def start_session(self) -> SessionResult:
+    def start_session(self, preferred_action: str = "copy") -> SessionResult:
         """同步会话：嵌套事件循环直到完成/取消（托盘事件仍可处理）。"""
         if self._active is not None:
             return SessionResult(cancelled=True)  # 防重入
@@ -98,7 +101,7 @@ class ScreenshotManager(QObject):
 
         snapshot = ScreenCapture().capture()  # Capture 先于 Overlay（§2.1）
         overlay = OverlayWindow(snapshot)
-        session = ScreenshotSession(overlay)
+        session = ScreenshotSession(overlay, preferred_action=preferred_action)
         self._active = session
 
         holder: dict = {}

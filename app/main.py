@@ -40,20 +40,22 @@ def main() -> int:
     tray = TrayApp(settings, client, fallback=SystemBackend())
     tray.show()
 
-    # M2: 全局热键（pynput 监听线程经 Signal 桥回主线程）
-    from app.hotkey import setup_hotkey
+    # 全局热键：controller 装配（pynput 线程经 Signal 桥回主线程）；
+    # 设置面板改键/改 OCR 地址后由 settings_reloaded 触发重装
+    from app.hotkey import HotkeyController
 
-    hotkey_manager = setup_hotkey(settings, tray.start_flow)
-    if hotkey_manager is None:
+    hotkeys = HotkeyController(tray.start_flow)
+    if not hotkeys.rebuild():
         from PySide6.QtWidgets import QSystemTrayIcon
 
         tray.showMessage(
             "全局热键不可用",
-            "缺少「辅助功能」权限：系统设置 → 隐私与安全性 → 辅助功能 → "
-            "勾选 snap-ocr（或运行它的终端/App）后重启。\n"
-            f"仍可用托盘菜单触发截图（目标热键 {settings.hotkey}）。",
+            "缺少「辅助功能」权限或热键配置无效：系统设置 → 隐私与安全性 → "
+            "辅助功能 → 勾选 snap-ocr（或运行它的终端/App）后重启。\n"
+            "仍可用托盘菜单触发截图。",
             QSystemTrayIcon.MessageIcon.Warning,
         )
+    tray.settings_reloaded.connect(lambda _s: hotkeys.rebuild())
 
     return app.exec()
 

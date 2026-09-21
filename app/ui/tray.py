@@ -57,6 +57,8 @@ class _RecognizeWorker(QThread):
 
 
 class TrayApp(QSystemTrayIcon):
+    settings_reloaded = Signal(object)   # 新 Settings（面板保存后；main 用于重装热键）
+
     def __init__(self, settings: Settings, client: OCRClient, fallback):
         super().__init__(_make_icon())
         self._settings = settings
@@ -86,8 +88,12 @@ class TrayApp(QSystemTrayIcon):
         menu = QMenu()
 
         act = QAction("截图识别", menu)
-        act.triggered.connect(self.start_flow)
+        act.triggered.connect(lambda _=False: self.start_flow())
         menu.addAction(act)
+
+        settings_act = QAction("设置…", menu)
+        settings_act.triggered.connect(lambda _=False: self._open_settings())
+        menu.addAction(settings_act)
 
         # 质量档切换
         quality_menu = menu.addMenu("质量档")
@@ -190,7 +196,29 @@ class TrayApp(QSystemTrayIcon):
             )
         return None
 
-    def start_flow(self) -> None:
+    # ── 设置面板 ──────────────────────────
+    def _open_settings(self) -> None:
+        from app.ui.settings_window import SettingsWindow
+
+        win = getattr(self, "_settings_win", None)
+        if win is None:
+            win = SettingsWindow(self._settings)
+            win.settings_saved.connect(self.apply_settings)
+            self._settings_win = win
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
+    def apply_settings(self, settings: Settings) -> None:
+        """面板保存后热应用：换配置、重建 OCR 客户端；热键由 main 订阅重装。"""
+        self._settings = settings
+        self._client.close()
+        self._client = OCRClient(settings.ocr_base_url, settings.ocr_timeout_s)
+        self._quality = settings.ocr_quality
+        self._sync_quality_menu()
+        self.settings_reloaded.emit(settings)
+
+    def start_flow(self, action: str = "copy") -> None:
         if self._busy:
             return
         self._busy = True
@@ -199,7 +227,7 @@ class TrayApp(QSystemTrayIcon):
         if manager is not None:
             # ── V2: Screenshot Session（完成动作按 SessionResult.action 分发）──
             try:
-                result = manager.start_session()
+                result = manager.start_session(preferred_action=action)
             except Exception as e:  # noqa: BLE001 — 会话层异常要可见
                 QMessageBox.warning(None, "snap-ocr", f"截图失败: {e}")
                 return

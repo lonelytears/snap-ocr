@@ -1,11 +1,12 @@
 """M2 单测：全局热键解析 + 登录项纯函数。"""
 
 from app import login_item
-from app.hotkey import DEFAULT_HOTKEY, ShortcutManager
+from app.config import Settings
+from app.hotkey import ShortcutManager
 
 
 def test_hotkey_default_parses():
-    assert ShortcutManager.validate(DEFAULT_HOTKEY)
+    assert ShortcutManager.validate(Settings().hotkey)
 
 
 def test_hotkey_invalid_rejected():
