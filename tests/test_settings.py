@@ -103,15 +103,21 @@ def qapp_module():
 def test_hotkey_rebuild_no_crash(qapp_module):
     """回归1：pynput 无 is_running()，stop 旧实现在此 AttributeError 被吞。
     回归2：stop/重建监听器在 macOS 上与 CFRunLoop 竞态直接杀进程——
-    新实现必须只换绑不换监听器（进程存活 + 热键表原地更新）。"""
-    from app.hotkey import HotkeyController
+    新实现必须只换绑不换监听器（进程存活 + 热键表原地更新）。
+    回归3：权限预检曾误用不存在的 Quartz.AXIsProcessTrusted 恒返回 True——
+    无权限时必须如实报 False 且不留下死监听器引用。"""
+    from app.hotkey import HotkeyController, has_ax_permission
 
     calls = []
     controller = HotkeyController(lambda action: calls.append(action))
-    assert controller.rebuild()          # 初始：创建并 start 唯一监听器
-    first = controller._listener._listener
-    assert controller.rebuild()          # 换绑：不得新建监听器
+    ok = controller.rebuild()
+    if not has_ax_permission():
+        assert ok is False                # 无权限：如实失败，不留死监听器
+        assert controller._listener is None
+        return
+    assert ok
+    first = controller._listener.raw_listener()
+    assert controller.rebuild()           # 换绑：不得新建监听器
     assert controller.rebuild()
-    assert controller._listener is not None
-    assert controller._listener._listener is first   # 同一个底层监听器
-    assert len(controller._listener._listener._hotkeys) == 2
+    assert controller._listener.raw_listener() is first
+    assert len(controller._listener.raw_listener()._hotkeys) == 2

@@ -18,13 +18,24 @@ from PySide6.QtCore import QObject, Signal
 
 
 def has_ax_permission() -> bool:
-    """只读预检辅助功能权限（无 pyobjc 环境不阻断）。"""
+    """只读预检辅助功能权限（不弹窗）。
+
+    注意：AXIsProcessTrusted 住在 HIServices 里，Quartz 并不导出它——
+    曾因此处误用 Quartz 符号 + 异常吞掉而恒返回 True，导致无权限时
+    监听器带着死事件 tap "成功"启动（保存成功但热键永远不响）。
+    """
+    try:
+        from HIServices import AXIsProcessTrusted
+
+        return bool(AXIsProcessTrusted())
+    except ImportError:
+        pass
     try:
         import Quartz
 
-        return bool(Quartz.AXIsProcessTrusted())
-    except Exception:  # noqa: BLE001
-        return True
+        return bool(Quartz.AXIsProcessTrusted())   # 旧版绑定兜底
+    except (ImportError, AttributeError):
+        return True   # 非 macOS/无绑定时按可用处理，不阻断
 
 
 def validate_hotkey(hotkey_str: str) -> bool:
@@ -73,6 +84,10 @@ class RebindableHotkeys:
     def start(self) -> None:
         self._listener.start()
 
+    def raw_listener(self):
+        """暴露底层 GlobalHotKeys（供启动后检查 IS_TRUSTED 等状态）。"""
+        return self._listener
+
 
 class HotkeyController:
     """按当前 Settings 装配热键；设置变更后 rebuild() 原地换绑生效。"""
@@ -102,6 +117,15 @@ class HotkeyController:
         if self._listener is None:
             self._listener = RebindableHotkeys(hotkeys)
             self._listener.start()   # 唯一一次 start，此后只 rebind
+            try:
+                self._listener.raw_listener().wait(1.0)
+                if not getattr(self._listener.raw_listener(), "IS_TRUSTED", True):
+                    # 事件 tap 未建立（无辅助功能）：清引用允许授权后重建，
+                    # 上层据 False 弹指引
+                    self._listener = None
+                    return False
+            except Exception:  # noqa: BLE001 — wait 失败不影响主流程
+                pass
         else:
             self._listener.rebind(hotkeys)
         return True
