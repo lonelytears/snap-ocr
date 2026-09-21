@@ -44,10 +44,10 @@ def test_stale_keys_ignored():
 
 def test_default_hotkeys_valid():
     s = Settings()
-    from app.hotkey import ShortcutManager
+    from app.hotkey import validate_hotkey
 
-    assert ShortcutManager.validate(s.hotkey)
-    assert ShortcutManager.validate(s.hotkey_ocr)
+    assert validate_hotkey(s.hotkey)
+    assert validate_hotkey(s.hotkey_ocr)
     assert s.hotkey != s.hotkey_ocr
 
 
@@ -101,13 +101,17 @@ def qapp_module():
 
 
 def test_hotkey_rebuild_no_crash(qapp_module):
-    """回归：改设置后 rebuild 需 stop 旧监听——pynput 无 is_running()，
-    旧实现在此 AttributeError 且被窗口化应用吞掉（'保存没反应'根因）。"""
+    """回归1：pynput 无 is_running()，stop 旧实现在此 AttributeError 被吞。
+    回归2：stop/重建监听器在 macOS 上与 CFRunLoop 竞态直接杀进程——
+    新实现必须只换绑不换监听器（进程存活 + 热键表原地更新）。"""
     from app.hotkey import HotkeyController
 
     calls = []
     controller = HotkeyController(lambda action: calls.append(action))
-    assert controller.rebuild()          # 初始装（manager 为 None 不走 stop）
-    assert controller.rebuild()          # 换绑：必须能 stop 旧监听再启新
+    assert controller.rebuild()          # 初始：创建并 start 唯一监听器
+    first = controller._listener._listener
+    assert controller.rebuild()          # 换绑：不得新建监听器
     assert controller.rebuild()
-    assert controller._manager is not None
+    assert controller._listener is not None
+    assert controller._listener._listener is first   # 同一个底层监听器
+    assert len(controller._listener._listener._hotkeys) == 2

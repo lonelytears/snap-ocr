@@ -2,15 +2,15 @@
 
 from app import login_item
 from app.config import Settings
-from app.hotkey import ShortcutManager
+from app.hotkey import validate_hotkey
 
 
 def test_hotkey_default_parses():
-    assert ShortcutManager.validate(Settings().hotkey)
+    assert validate_hotkey(Settings().hotkey)
 
 
 def test_hotkey_invalid_rejected():
-    assert not ShortcutManager.validate("<not_a_key>+$@")
+    assert not validate_hotkey("<not_a_key>+$@")
 
 
 def test_agent_plist_content_roundtrip():

@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.config import Settings, reset_user_config, update_user_config
-from app.hotkey import ShortcutManager
+from app.hotkey import validate_hotkey
 
 # ── Qt 键事件 → pynput 热键串 的映射表（纯数据；顺序 = macOS 惯例 ⌃⌥⇧⌘）──
 MOD_MAP = [
@@ -124,7 +124,7 @@ class HotkeyEdit(QPushButton):
             self._exit_capture()
             return
         parsed = qt_event_to_pynput(event.key(), event.modifiers())
-        if parsed and ShortcutManager.validate(parsed):
+        if parsed and validate_hotkey(parsed):
             self._value = parsed
             self.changed.emit()
             self._exit_capture()
