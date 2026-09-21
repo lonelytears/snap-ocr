@@ -107,12 +107,39 @@ class TrayApp(QSystemTrayIcon):
         )
         menu.addMenu(history_menu)
 
+        # 开机自启（M2）
+        self._login_act = QAction("开机自启", menu)
+        self._login_act.setCheckable(True)
+        self._login_act.triggered.connect(self._toggle_login_item)
+        menu.addAction(self._login_act)
+
         menu.addSeparator()
         quit_act = QAction("退出", menu)
         quit_act.triggered.connect(self._quit)
         menu.addAction(quit_act)
 
+        menu.aboutToShow.connect(self._sync_login_item)
         self.setContextMenu(menu)
+
+    def _sync_login_item(self) -> None:
+        from app import login_item
+
+        try:
+            self._login_act.setChecked(login_item.is_enabled())
+        except Exception:  # noqa: BLE001 — 状态读取失败不影响菜单
+            pass
+
+    def _toggle_login_item(self, checked: bool) -> None:
+        from app import login_item
+
+        try:
+            login_item.set_enabled(checked)
+        except Exception as e:  # noqa: BLE001 — 注册失败要可见并回滚勾选
+            self._login_act.setChecked(not checked)
+            self.showMessage("开机自启设置失败", str(e),
+                             QSystemTrayIcon.MessageIcon.Warning)
+            return
+        self._sync_login_item()
 
     def _sync_quality_menu(self) -> None:
         for q, act in self._quality_actions.items():

@@ -83,7 +83,10 @@ capture/CaptureBackend          接口: capture() -> (image_path, geometry)
       + OCR(点按时才调接口) + 保存 + 取消；Esc 语义分层（编辑中=结束编辑，否则=取消）
       （2026-09-20 真正接通并验收：此前 items/toolbar 为未接线状态；
        同日修复选区镂空 drawPixmap source 物理像素语义导致的截取偏移）
-- [ ] M2 全局热键(pynput) + PyInstaller 打包 .app + 登录项
+- [x] M2 全局热键(pynput) + PyInstaller 打包 .app + 登录项
+      （2026-09-21：⌥⇧O 默认/SNAP_HOTKEY 可配，AX 只读预检+托盘指引，
+      pynput 线程经 Signal 桥回主线程；onedir .app 92MB/LSUIElement；
+      登录项双轨=.app 态 SMAppService/开发态 LaunchAgent plist）
 - [ ] 后续: 贴图钉屏 / 延时截图 / 图元选中移动 / 长截图 / 取色标尺
 
 ## 七、风险与预案

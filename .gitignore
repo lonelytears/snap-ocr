@@ -9,6 +9,7 @@ __pycache__/
 dist/
 build/
 *.spec
+!snap-ocr.spec
 
 # 工具缓存
 .pytest_cache/

@@ -10,10 +10,12 @@ dependencies = [
     "pydantic-settings>=2.6",
     "pynput>=1.7",               # 全局热键(M2 启用, 需辅助功能权限)
     "pyobjc-framework-quartz>=12.2.2",
+    "pyobjc-framework-servicemanagement>=12.2.2",
 ]
 
 [dependency-groups]
 dev = [
+    "pyinstaller>=6.22.3",
     "pytest>=8.3",
     "ruff>=0.8",
 ]
