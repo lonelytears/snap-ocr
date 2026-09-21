@@ -215,7 +215,7 @@ class TrayApp(QSystemTrayIcon):
                 self._save_image(result.image)
                 return
 
-            # ── copy：进剪贴板 + 预览 ──
+            # ── copy：静默进剪贴板（完成手势不放弹窗，只有 OCR 才开结果窗）──
             from PySide6.QtCore import Qt
             from PySide6.QtGui import QGuiApplication
 
@@ -229,26 +229,6 @@ class TrayApp(QSystemTrayIcon):
                     Qt.TransformationMode.SmoothTransformation,
                 )
             QGuiApplication.clipboard().setImage(image)
-            # 结果预览窗：当场对照「框的」vs「得到的」，不经过剪贴板与记忆
-            image.save("/tmp/snap_result_preview.png")
-            from time import time as _time
-
-            from app.history import HistoryEntry
-            from app.ocr_client import OCRResult
-            from app.ui.result_window import PinnedResultWindow
-
-            preview_result = OCRResult(
-                text="(截图完成)", quality="snap",
-                latency_ms=float(image.width()), avg_score=0.0,
-            )
-            entry = HistoryEntry(
-                timestamp=_time(), text="(截图完成)", quality="snap",
-                latency_ms=float(image.width()), result=preview_result,
-            )
-            self._preview = PinnedResultWindow(
-                "/tmp/snap_result_preview.png", self._settings.result_font_pt
-            )
-            self._preview.set_result(entry)
             self.showMessage("snap-ocr", "截图已复制到剪贴板",
                              QSystemTrayIcon.MessageIcon.Information)
             return
