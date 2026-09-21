@@ -51,7 +51,7 @@ app = BUNDLE(
     icon=None,               # 托盘图标程序化绘制，无需 .icns
     info_plist={
         "LSUIElement": True,           # Agent 应用：无 Dock 图标无主菜单
-        "CFBundleShortVersionString": "0.1.0",
+        "CFBundleShortVersionString": "1.0.0",
         "CFBundleIdentifier": "com.lonelytears.snap-ocr",
         "NSHumanReadableCopyright": "local use",
     },
