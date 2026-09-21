@@ -48,8 +48,11 @@ class ShortcutManager:
         self._listener.start()
 
     def stop(self) -> None:
-        if self._listener.is_running():
+        # pynput Listener 无 is_running()；stop() 对未启动/已停止均幂等安全
+        try:
             self._listener.stop()
+        except Exception:  # noqa: BLE001 — 停止失败不阻断重装流程
+            pass
 
     @staticmethod
     def validate(hotkey_str: str) -> bool:

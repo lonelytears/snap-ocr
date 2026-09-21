@@ -98,3 +98,16 @@ def test_session_preferred_action(qapp_module):
 @pytest.fixture(scope="module")
 def qapp_module():
     return QApplication.instance() or QApplication([])
+
+
+def test_hotkey_rebuild_no_crash(qapp_module):
+    """回归：改设置后 rebuild 需 stop 旧监听——pynput 无 is_running()，
+    旧实现在此 AttributeError 且被窗口化应用吞掉（'保存没反应'根因）。"""
+    from app.hotkey import HotkeyController
+
+    calls = []
+    controller = HotkeyController(lambda action: calls.append(action))
+    assert controller.rebuild()          # 初始装（manager 为 None 不走 stop）
+    assert controller.rebuild()          # 换绑：必须能 stop 旧监听再启新
+    assert controller.rebuild()
+    assert controller._manager is not None

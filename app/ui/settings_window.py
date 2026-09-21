@@ -197,6 +197,7 @@ class SettingsWindow(QWidget):
             " padding:6px 18px; font-size:13px;"
         )
         save_btn.clicked.connect(lambda _=False: self._save())
+        self._save_btn = save_btn
         bar_lay.addStretch(1)
         bar_lay.addWidget(reset_btn)
         bar_lay.addWidget(save_btn)
@@ -361,9 +362,38 @@ class SettingsWindow(QWidget):
             "llm_api_key": self.llm_key_edit.text().strip(),
             "llm_model": self.llm_model_edit.text().strip(),
         }
-        settings = update_user_config(updates)
-        self._init_values = settings
-        self.settings_saved.emit(settings)
+        try:
+            settings = update_user_config(updates)
+            self._init_values = settings
+            self.settings_saved.emit(settings)
+            self._flash_saved()
+        except Exception as e:  # noqa: BLE001 — 保存链路任何异常都必须可见
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.critical(self, "保存失败", f"{type(e).__name__}: {e}")
+
+    def _flash_saved(self, btn: QPushButton | None = None) -> None:
+        """保存成功的可见反馈：按钮变「✓ 已保存」1.5s 后复原。"""
+        target = btn or getattr(self, "_save_btn", None)
+        if target is None:
+            return
+        from PySide6.QtCore import QTimer
+
+        original = target.text()
+        target.setText("✓ 已保存")
+        target.setStyleSheet(
+            "background:#10b981; color:#ffffff; border-radius:6px;"
+            " padding:6px 18px; font-size:13px;"
+        )
+        target.setEnabled(False)
+        QTimer.singleShot(1500, lambda: (
+            target.setText(original),
+            target.setStyleSheet(
+                "background:#2563eb; color:#ffffff; border-radius:6px;"
+                " padding:6px 18px; font-size:13px;"
+            ),
+            target.setEnabled(True),
+        ))
 
     def _reset(self) -> None:
         settings = reset_user_config()
@@ -378,3 +408,4 @@ class SettingsWindow(QWidget):
         self.llm_model_edit.setText("")
         self._check_conflict()
         self.settings_saved.emit(settings)
+        self._flash_saved()

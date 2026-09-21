@@ -55,7 +55,18 @@ def main() -> int:
             "仍可用托盘菜单触发截图。",
             QSystemTrayIcon.MessageIcon.Warning,
         )
-    tray.settings_reloaded.connect(lambda _s: hotkeys.rebuild())
+    def _on_settings_reloaded(_s):
+        from PySide6.QtWidgets import QSystemTrayIcon
+
+        if not hotkeys.rebuild():
+            tray.showMessage(
+                "全局热键未生效",
+                "缺少「辅助功能」权限或热键配置无效（系统设置 → 隐私与安全性 → "
+                "辅助功能 → 勾选 snap-ocr 后重启）。",
+                QSystemTrayIcon.MessageIcon.Warning,
+            )
+
+    tray.settings_reloaded.connect(_on_settings_reloaded)
 
     return app.exec()
 
