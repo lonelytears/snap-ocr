@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# 环境与产物
+.env
+dist/
+build/
+*.spec
+
+# 工具缓存
+.pytest_cache/
+.ruff_cache/
+
+# 系统
+.DS_Store
+
+# 截图临时文件
+/tmp/snap_*.png
