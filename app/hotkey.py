@@ -16,25 +16,51 @@ GlobalHotKeys 的热键表（纯 Python list 引用替换，GIL 下原子）。
 
 from PySide6.QtCore import QObject, Signal
 
+_STATUS_LOG = None   # Path，惰性解析（避免模块导入期碰 HOME）
+
+
+def log_hotkey_status(event: str, ok: bool, detail: str = "") -> None:
+    """热键状态落盘（~/Library/Logs/snap-ocr-hotkey.log）——窗口化应用
+    stdout 不可见，排障只能靠这个通道。"""
+    global _STATUS_LOG
+    try:
+        from datetime import datetime
+        from pathlib import Path
+
+        if _STATUS_LOG is None:
+            _STATUS_LOG = Path.home() / "Library" / "Logs" / "snap-ocr-hotkey.log"
+        _STATUS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%F %T")
+        with _STATUS_LOG.open("a") as f:
+            f.write(f"{stamp} {event} ok={ok} ax={has_ax_permission()} {detail}\n")
+    except OSError:
+        pass
+
 
 def has_ax_permission() -> bool:
-    """只读预检辅助功能权限（不弹窗）。
+    """只读预检键盘监听权限（不弹窗）。
 
-    注意：AXIsProcessTrusted 住在 HIServices 里，Quartz 并不导出它——
-    曾因此处误用 Quartz 符号 + 异常吞掉而恒返回 True，导致无权限时
-    监听器带着死事件 tap "成功"启动（保存成功但热键永远不响）。
+    pynput 用 listen-only 事件 tap：这类 tap 依据的是「输入监控」
+    (ListenEvent) 权限；辅助功能(Accessibility) 是抑制类 tap 的要求、
+    也是常见误判源——两者任一满足即可。实际可用性最终以 rebuild()
+    里「事件 tap 是否真的建立」为准。
+
+    历史坑：AXIsProcessTrusted 住在 HIServices，Quartz 不导出它——曾误用
+    Quartz 符号 + 异常吞掉恒返回 True；后又一刀切只认辅助功能，把已授
+    输入监控的可用路径也堵死（热键"保存成功但不生效"的真因之一）。
     """
-    try:
-        from HIServices import AXIsProcessTrusted
-
-        return bool(AXIsProcessTrusted())
-    except ImportError:
-        pass
     try:
         import Quartz
 
-        return bool(Quartz.AXIsProcessTrusted())   # 旧版绑定兜底
+        if Quartz.CGPreflightListenEventAccess():   # 输入监控（listen-only tap 的正主）
+            return True
     except (ImportError, AttributeError):
+        pass
+    try:
+        from HIServices import AXIsProcessTrusted
+
+        return bool(AXIsProcessTrusted())           # 辅助功能兜底
+    except ImportError:
         return True   # 非 macOS/无绑定时按可用处理，不阻断
 
 
@@ -119,10 +145,10 @@ class HotkeyController:
             self._listener.start()   # 唯一一次 start，此后只 rebind
             try:
                 self._listener.raw_listener().wait(1.0)
-                if not getattr(self._listener.raw_listener(), "IS_TRUSTED", True):
-                    # 事件 tap 未建立（无辅助功能）：清引用允许授权后重建，
-                    # 上层据 False 弹指引
-                    self._listener = None
+                # 以「事件 tap 是否真的建立」为准（_run 里 tap 创建失败会
+                # 提前返回并保持 _loop=None）——不依赖可能误判的预检。
+                if getattr(self._listener.raw_listener(), "_loop", None) is None:
+                    self._listener = None   # 清引用允许授权后重建
                     return False
             except Exception:  # noqa: BLE001 — wait 失败不影响主流程
                 pass

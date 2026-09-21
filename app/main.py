@@ -45,7 +45,11 @@ def main() -> int:
     from app.hotkey import HotkeyController
 
     hotkeys = HotkeyController(tray.start_flow)
-    if not hotkeys.rebuild():
+    from app.hotkey import log_hotkey_status
+
+    ok = hotkeys.rebuild()
+    log_hotkey_status("startup", ok, f"pid={__import__('os').getpid()}")
+    if not ok:
         from PySide6.QtWidgets import QSystemTrayIcon
 
         tray.showMessage(
@@ -55,10 +59,13 @@ def main() -> int:
             "仍可用托盘菜单触发截图。",
             QSystemTrayIcon.MessageIcon.Warning,
         )
+
     def _on_settings_reloaded(_s):
         from PySide6.QtWidgets import QSystemTrayIcon
 
-        if not hotkeys.rebuild():
+        ok2 = hotkeys.rebuild()
+        log_hotkey_status("rebind", ok2)
+        if not ok2:
             tray.showMessage(
                 "全局热键未生效",
                 "缺少「辅助功能」权限或热键配置无效（系统设置 → 隐私与安全性 → "
