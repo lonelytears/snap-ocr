@@ -75,6 +75,33 @@ def validate_hotkey(hotkey_str: str) -> bool:
         return False
 
 
+def request_input_permission() -> None:
+    """触发系统授权弹窗（listen-only tap 的正主是输入监控）。
+
+    比引导用户手动去设置里「+」添加可靠得多——原生对话框一键直达，
+    授权写盘由系统完成。允许后需重启应用（事件 tap 在启动时创建）。
+    """
+    try:
+        import Quartz
+
+        Quartz.CGRequestListenEventAccess()   # 输入监控弹窗
+        return
+    except (ImportError, AttributeError):
+        pass
+    try:
+        from Foundation import NSDictionary
+        from HIServices import (
+            AXIsProcessTrustedWithOptions,
+            kAXTrustedCheckOptionPrompt,
+        )
+
+        AXIsProcessTrustedWithOptions(
+            NSDictionary.dictionaryWithObject_(True, forKey=kAXTrustedCheckOptionPrompt)
+        )
+    except (ImportError, AttributeError):
+        pass   # 非 macOS 环境静默跳过
+
+
 class _HotkeyBridge(QObject):
     """pynput 线程 → Qt 主线程的唯一通道。"""
 
