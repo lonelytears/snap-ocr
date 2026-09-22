@@ -112,8 +112,16 @@ class _HotkeyBridge(QObject):
         self.triggered.connect(lambda fn: fn())
 
 
+def _keys_trace_enabled() -> bool:
+    """按键追踪开关：~/Library/Logs/snap-ocr-keys-debug 文件存在即开（排障用）。"""
+    try:
+        return (_STATUS_LOG.parent / "snap-ocr-keys-debug").exists()
+    except Exception:  # noqa: BLE001
+        return False
+
+
 class RebindableHotkeys:
-    """包一层 GlobalHotKeys：暴露安全的原地换绑。
+    """包一层 GlobalHotKeys：暴露安全的原地换绑 + 可选按键追踪。
 
     只依赖 GlobalHotKeys 的稳定内部结构 self._hotkeys（list of HotKey，
     _on_press/_on_release 每次事件遍历它）——监听器永不停启。
@@ -126,6 +134,21 @@ class RebindableHotkeys:
 
         self._kb = keyboard
         self._listener = keyboard.GlobalHotKeys(hotkeys)
+        # 追踪钩子：darwin 事件走 self.on_press 属性调用（构造时绑定的方法），
+        # 因此包一层后挂回同名属性才能生效
+        orig = self._listener.on_press
+
+        def traced(key, injected):
+            if _keys_trace_enabled():
+                try:
+                    canon = self._listener.canonical(key)
+                    log_hotkey_status("key", True,
+                                      f"canon={canon!r} injected={injected}")
+                except Exception:  # noqa: BLE001 — 追踪失败不影响事件
+                    pass
+            return orig(key, injected)
+
+        self._listener.on_press = traced
 
     def rebind(self, hotkeys: dict[str, object]) -> None:
         """换绑（可空表=全部停用）；监听器与事件 tap 不动。"""
@@ -138,7 +161,7 @@ class RebindableHotkeys:
         self._listener.start()
 
     def raw_listener(self):
-        """暴露底层 GlobalHotKeys（供启动后检查 IS_TRUSTED 等状态）。"""
+        """暴露底层 GlobalHotKeys（供启动后检查 tap 状态等）。"""
         return self._listener
 
 
@@ -157,16 +180,25 @@ class HotkeyController:
 
         if not has_ax_permission():
             return False
+
+        def make_run(action: str):
+            def run():
+                log_hotkey_status("fired", True, f"action={action}")  # 激活留痕
+                self._dispatch(action)
+            return run
+
+        def make_emit(fn):
+            return lambda: self._bridge.triggered.emit(fn)
+
         s = get_settings()
         hotkeys: dict[str, object] = {}
         for key_str, action in ((s.hotkey, "copy"), (s.hotkey_ocr, "ocr")):
             if not key_str or not validate_hotkey(key_str) or key_str in hotkeys:
                 continue   # 无效键跳过；两动作撞键保留先者
-            hotkeys[key_str] = lambda a=action: self._bridge.triggered.emit(
-                lambda: self._dispatch(a)
-            )
+            hotkeys[key_str] = make_emit(make_run(action))
         if not hotkeys:
             return False
+
         if self._listener is None:
             self._listener = RebindableHotkeys(hotkeys)
             self._listener.start()   # 唯一一次 start，此后只 rebind

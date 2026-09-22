@@ -28,12 +28,15 @@ from PySide6.QtWidgets import (
 from app.config import Settings, reset_user_config, update_user_config
 from app.hotkey import validate_hotkey
 
-# ── Qt 键事件 → pynput 热键串 的映射表（纯数据；顺序 = macOS 惯例 ⌃⌥⇧⌘）──
+# ── Qt 键事件 → pynput 热键串 的映射表（纯数据；显示顺序 = macOS 惯例 ⌃⌥⇧⌘）──
+# 语义陷阱：macOS 上 Qt 的 ControlModifier 指 ⌘、MetaModifier 指 ⌃，
+# 与 pynput 的 <cmd>/<ctrl> 正好相反——按下 ⌘⇧K 曾被录成 <ctrl>+<shift>+k，
+# 热键永不匹配（事件全到、组合不合）。
 MOD_MAP = [
-    (Qt.KeyboardModifier.ControlModifier, "<ctrl>", "⌃"),
+    (Qt.KeyboardModifier.MetaModifier, "<ctrl>", "⌃"),
     (Qt.KeyboardModifier.AltModifier, "<alt>", "⌥"),
     (Qt.KeyboardModifier.ShiftModifier, "<shift>", "⇧"),
-    (Qt.KeyboardModifier.MetaModifier, "<cmd>", "⌘"),
+    (Qt.KeyboardModifier.ControlModifier, "<cmd>", "⌘"),
 ]
 
 # 修饰键本身的 key code（录入时按下纯修饰不算有效组合）
