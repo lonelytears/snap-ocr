@@ -11,6 +11,7 @@ dependencies = [
     "pynput>=1.7",               # 全局热键(M2 启用, 需辅助功能权限)
     "pyobjc-framework-quartz>=12.2.2",
     "pyobjc-framework-servicemanagement>=12.2.2",
+    "zxing-cpp>=3.1,<4",
 ]
 
 [dependency-groups]

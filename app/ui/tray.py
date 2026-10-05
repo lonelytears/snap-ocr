@@ -37,9 +37,13 @@ def _make_icon() -> QIcon:
 
 
 class _RecognizeWorker(QThread):
-    """识别在线程里跑，避免阻塞 Qt 主事件循环（accurate 档可能 2s+）。"""
+    """识别在线程里跑，避免阻塞 Qt 主事件循环（accurate 档可能 2s+）。
 
-    finished_ok = Signal(object)      # OCRResult
+    QR 优先：先本地 zxing 解码（毫秒级、离线可用），命中直接返回码内容
+    不调远程；未命中照走 OCR。decode_file 永不抛异常，失败即未命中。
+    """
+
+    finished_ok = Signal(object)      # OCRResult（kind="qr"|"ocr"）
     failed = Signal(str)
 
     def __init__(self, client: OCRClient, path: str, quality: str, parent=None):
@@ -49,6 +53,14 @@ class _RecognizeWorker(QThread):
         self._quality = quality
 
     def run(self) -> None:
+        from app import qr
+
+        t0 = time.perf_counter()
+        hits = qr.decode_file(self._path)
+        if hits:
+            elapsed = (time.perf_counter() - t0) * 1000
+            self.finished_ok.emit(qr.to_result(hits, elapsed))
+            return
         try:
             result = self._client.recognize_file(self._path, quality=self._quality)
             self.finished_ok.emit(result)

@@ -9,8 +9,15 @@
 
 import time
 
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QCursor, QGuiApplication, QKeySequence, QPixmap, QShortcut
+from PySide6.QtCore import QPoint, Qt, QUrl
+from PySide6.QtGui import (
+    QCursor,
+    QDesktopServices,
+    QGuiApplication,
+    QKeySequence,
+    QPixmap,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -64,6 +71,7 @@ class PinnedResultWindow(QWidget):
         self._image_path = image_path
         self._drag_offset: QPoint | None = None
         self._entry: HistoryEntry | None = None
+        self._url: str | None = None
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -119,9 +127,13 @@ class PinnedResultWindow(QWidget):
         self.copy_btn = QPushButton("复制全部")
         self.copy_btn.setEnabled(False)
         self.copy_btn.clicked.connect(self._copy_all)
+        self.open_btn = QPushButton("打开链接 ↗")
+        self.open_btn.setVisible(False)
+        self.open_btn.clicked.connect(self._open_url)
         close_btn = QPushButton("关闭")
         close_btn.clicked.connect(self.close)
         btns.addWidget(self.copy_btn)
+        btns.addWidget(self.open_btn)
         btns.addStretch(1)
         btns.addWidget(close_btn)
         right.addLayout(btns)
@@ -133,19 +145,28 @@ class PinnedResultWindow(QWidget):
 
     # ── 数据流 ──────────────────────────
     def set_result(self, entry: HistoryEntry) -> None:
+        from app.qr import extract_first_url
+
         self._entry = entry
         self.text_edit.setPlainText(entry.text)
         self.text_edit.selectAll()
-        self.meta_label.setText(
-            f"⏱ {entry.latency_ms:.0f}ms · 置信度 {entry.result.avg_score:.2f}"
-            f" · {entry.quality}"
-        )
+        if getattr(entry.result, "kind", "ocr") == "qr":
+            self.meta_label.setText(f"▦ 二维码 · ⏱ {entry.latency_ms:.0f}ms · 本地解码")
+        else:
+            self.meta_label.setText(
+                f"⏱ {entry.latency_ms:.0f}ms · 置信度 {entry.result.avg_score:.2f}"
+                f" · {entry.quality}"
+            )
         self.copy_btn.setEnabled(True)
+        # 识别文本（QR 或 OCR）整行是 URL 时提供直达——二维码主用例
+        self._url = extract_first_url(entry.text)
+        self.open_btn.setVisible(self._url is not None)
 
     def set_error(self, message: str) -> None:
         self.text_edit.setPlainText(f"识别失败：{message}")
         self.meta_label.setText("❌ 出错了")
         self.copy_btn.setEnabled(False)
+        self.open_btn.setVisible(False)
 
     # ── 交互 ────────────────────────────
     def _copy_all(self) -> None:
@@ -153,6 +174,11 @@ class PinnedResultWindow(QWidget):
             return
         QGuiApplication.clipboard().setText(self._entry.text)
         self.copy_btn.setText("已复制 ✓")
+
+    def _open_url(self) -> None:
+        if not self._url:
+            return
+        QDesktopServices.openUrl(QUrl(self._url))
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -192,9 +218,10 @@ class ResultWindow(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
+        kind_label = "二维码" if getattr(entry.result, "kind", "ocr") == "qr" else entry.quality
         header = QLabel(
             time.strftime("%H:%M:%S", time.localtime(entry.timestamp))
-            + f"  ⏱ {entry.latency_ms:.0f}ms · {entry.quality}"
+            + f"  ⏱ {entry.latency_ms:.0f}ms · {kind_label}"
         )
         header.setStyleSheet("color:#888; font-size:11px;")
         layout.addWidget(header)

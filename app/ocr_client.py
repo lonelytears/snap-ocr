@@ -12,6 +12,7 @@ class OCRResult:
     latency_ms: float = 0.0
     avg_score: float = 0.0
     quality: str = "fast"
+    kind: str = "ocr"   # "ocr" | "qr"（识别链路 QR 优先，命中即 kind="qr"）
 
 
 class OCRServiceUnavailable(Exception):
