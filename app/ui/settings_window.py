@@ -346,7 +346,11 @@ class SettingsWindow(QWidget):
         self.update_url_edit.setPlaceholderText("https://…/appcast.json")
         form.addRow("更新源", self.update_url_edit)
 
-        tip = QLabel("更新源仅 https 且以 .json 结尾；一般无需修改")
+        self.update_proxy_edit = QLineEdit(s.update_proxy)
+        self.update_proxy_edit.setPlaceholderText("http://127.0.0.1:7890（GitHub 直连不畅时填写）")
+        form.addRow("代理", self.update_proxy_edit)
+
+        tip = QLabel("更新源仅 https 且以 .json 结尾；代理仅用于检查/下载更新，留空 = 直连")
         tip.setStyleSheet("color:#9ca3af; font-size:12px;")
         form.addRow("", tip)
         return self._page_wrapper(body)
@@ -414,6 +418,7 @@ class SettingsWindow(QWidget):
             "update_auto_check": self.auto_check_box.isChecked(),
             "update_check_url": update_url
             or "https://github.com/lonelytears/snap-ocr/releases/latest/download/appcast.json",
+            "update_proxy": self.update_proxy_edit.text().strip(),
         }
         try:
             settings = update_user_config(updates)
@@ -461,6 +466,7 @@ class SettingsWindow(QWidget):
         self.llm_model_edit.setText("")
         self.auto_check_box.setChecked(settings.update_auto_check)
         self.update_url_edit.setText(settings.update_check_url)
+        self.update_proxy_edit.setText(settings.update_proxy)
         self._check_conflict()
         self.settings_saved.emit(settings)
         self._flash_saved()

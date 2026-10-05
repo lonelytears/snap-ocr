@@ -46,10 +46,13 @@ def test_update_fields_defaults_and_persist():
     s = get_settings()
     assert s.update_auto_check is True
     assert s.update_check_url.endswith("/appcast.json")
+    assert s.update_proxy == ""
     s2 = update_user_config({"update_auto_check": False,
-                             "update_check_url": "https://example.com/x.json"})
+                             "update_check_url": "https://example.com/x.json",
+                             "update_proxy": "http://127.0.0.1:7890"})
     assert s2.update_auto_check is False
     assert s2.update_check_url == "https://example.com/x.json"
+    assert s2.update_proxy == "http://127.0.0.1:7890"
     app.config.get_settings.cache_clear()
     assert get_settings().update_auto_check is False
 

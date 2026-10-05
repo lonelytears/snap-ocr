@@ -193,10 +193,16 @@ def can_write_dir(d: Path) -> bool:
 
 
 class UpdateClient:
-    """appcast 拉取 + 流式下载。follow_redirects 必开：GitHub release 资产是 302 链。"""
+    """appcast 拉取 + 流式下载。follow_redirects 必开：GitHub release 资产是 302 链。
 
-    def __init__(self, timeout_s: float = 10.0, transport: httpx.BaseTransport | None = None):
-        self._client = httpx.Client(timeout=timeout_s, follow_redirects=True, transport=transport)
+    proxy: 形如 http://127.0.0.1:7890，空串直连（GUI 进程读不到环境变量，
+    系统代理也不被 httpx 自动识别——直连不畅的网络须在设置里显式配置）。
+    """
+
+    def __init__(self, timeout_s: float = 10.0, proxy: str = "",
+                 transport: httpx.BaseTransport | None = None):
+        self._client = httpx.Client(timeout=timeout_s, follow_redirects=True,
+                                    proxy=proxy or None, transport=transport)
 
     def fetch_appcast(self, url: str) -> str:
         try:
@@ -420,7 +426,7 @@ class UpdateController(QObject):
     def __init__(self, settings, parent=None):
         super().__init__(parent)
         self._settings = settings
-        self._client = UpdateClient()
+        self._client = UpdateClient(proxy=settings.update_proxy)
         self._check_worker: UpdateCheckWorker | None = None
         self._dl_worker: UpdateDownloadWorker | None = None
         self._manual = False
@@ -468,4 +474,8 @@ class UpdateController(QObject):
             subprocess.Popen(["/usr/bin/open", "-R", str(plan.reveal_path)])  # noqa: S603,S607
 
     def apply_settings(self, settings) -> None:
+        """换 URL/代理后重建 HTTP 客户端（worker 持旧引用，正在跑的请求不受影响）。"""
+        if self._settings.update_proxy != settings.update_proxy:
+            self._client.close()
+            self._client = UpdateClient(proxy=settings.update_proxy)
         self._settings = settings

@@ -41,6 +41,8 @@ class Settings(BaseSettings):
         "https://github.com/lonelytears/snap-ocr/releases/latest/download/appcast.json"
     )
     update_auto_check: bool = True
+    # GitHub 直连不畅的网络环境填本地代理，如 http://127.0.0.1:7890（空 = 直连）
+    update_proxy: str = ""
     # 截图后端: overlay=自绘选区+标注(需屏幕录制权限) | system=系统交互(免权限无标注)
     capture_backend: str = "overlay"
     # 剪贴板输出比例: logical=与框选视觉1:1(默认, 无缩放歧义) | device=Retina 2x物理(更清晰)
