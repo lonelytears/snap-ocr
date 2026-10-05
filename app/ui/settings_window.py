@@ -148,6 +148,7 @@ class SettingsWindow(QWidget):
     """单实例设置窗（托盘持有引用）。"""
 
     settings_saved = Signal(object)   # 新 Settings
+    check_update_requested = Signal()  # 「立即检查」由托盘转发给 UpdateController
 
     def __init__(self, settings: Settings):
         super().__init__()
@@ -172,7 +173,8 @@ class SettingsWindow(QWidget):
         )
         pages = [("⚙  通用", self._build_general_page),
                  ("⌨  快捷键", self._build_hotkey_page),
-                 ("🤖  大模型", self._build_llm_page)]
+                 ("🤖  大模型", self._build_llm_page),
+                 ("🔄  关于", self._build_about_page)]
         self.stack = QStackedWidget()
         for title, builder in pages:
             QListWidgetItem(title, self.sidebar)
@@ -313,6 +315,42 @@ class SettingsWindow(QWidget):
         form.addRow("", badge)
         return self._page_wrapper(body)
 
+    def _build_about_page(self) -> QWidget:
+        from PySide6.QtWidgets import QCheckBox
+
+        from app import __version__
+
+        s = self._init_values
+        body = QWidget()
+        form = QFormLayout(body)
+        form.setSpacing(14)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+        ver = QLabel(f"snap-ocr v{__version__}")
+        ver.setStyleSheet("color:#111827; font-size:15px; font-weight:600;")
+        form.addRow("版本", ver)
+
+        self.auto_check_box = QCheckBox("每天自动检查更新")
+        self.auto_check_box.setChecked(s.update_auto_check)
+        form.addRow("自动更新", self.auto_check_box)
+
+        check_btn = QPushButton("立即检查")
+        check_btn.setStyleSheet(
+            "border:1px solid #2563eb; color:#2563eb; border-radius:6px;"
+            " padding:4px 12px; background:#ffffff;"
+        )
+        check_btn.clicked.connect(lambda _=False: self.check_update_requested.emit())
+        form.addRow("", check_btn)
+
+        self.update_url_edit = QLineEdit(s.update_check_url)
+        self.update_url_edit.setPlaceholderText("https://…/appcast.json")
+        form.addRow("更新源", self.update_url_edit)
+
+        tip = QLabel("更新源仅 https 且以 .json 结尾；一般无需修改")
+        tip.setStyleSheet("color:#9ca3af; font-size:12px;")
+        form.addRow("", tip)
+        return self._page_wrapper(body)
+
     def _labeled(self, edit: HotkeyEdit, hint: QLabel) -> QWidget:
         holder = QWidget()
         col = QVBoxLayout(holder)
@@ -354,6 +392,15 @@ class SettingsWindow(QWidget):
             self.sidebar.setCurrentRow(1)
             self._check_conflict()
             return
+        update_url = self.update_url_edit.text().strip()
+        if update_url and not (update_url.startswith("https://") and update_url.endswith(".json")):
+            self.sidebar.setCurrentRow(3)
+            self.update_url_edit.setStyleSheet(
+                "border:1px solid #ef4444; border-radius:6px;"
+                " padding:4px 8px; background:#ffffff;"
+            )
+            return
+        self.update_url_edit.setStyleSheet("")
         updates = {
             "ocr_base_url": self.ocr_url_edit.text().strip().rstrip("/"),
             "ocr_quality": "fast" if self.quality_combo.currentIndex() == 0 else "accurate",
@@ -364,6 +411,9 @@ class SettingsWindow(QWidget):
             "llm_base_url": self.llm_url_edit.text().strip(),
             "llm_api_key": self.llm_key_edit.text().strip(),
             "llm_model": self.llm_model_edit.text().strip(),
+            "update_auto_check": self.auto_check_box.isChecked(),
+            "update_check_url": update_url
+            or "https://github.com/lonelytears/snap-ocr/releases/latest/download/appcast.json",
         }
         try:
             settings = update_user_config(updates)
@@ -409,6 +459,8 @@ class SettingsWindow(QWidget):
         self.llm_url_edit.setText("")
         self.llm_key_edit.setText("")
         self.llm_model_edit.setText("")
+        self.auto_check_box.setChecked(settings.update_auto_check)
+        self.update_url_edit.setText(settings.update_check_url)
         self._check_conflict()
         self.settings_saved.emit(settings)
         self._flash_saved()

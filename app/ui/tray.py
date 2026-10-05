@@ -59,16 +59,19 @@ class _RecognizeWorker(QThread):
 class TrayApp(QSystemTrayIcon):
     settings_reloaded = Signal(object)   # 新 Settings（面板保存后；main 用于重装热键）
 
-    def __init__(self, settings: Settings, client: OCRClient, fallback):
+    def __init__(self, settings: Settings, client: OCRClient, fallback, updater):
         super().__init__(_make_icon())
         self._settings = settings
         self._client = client
         self._fallback = fallback    # 系统截图回退(免权限)
+        self._updater = updater
         self._warned_permission = False
         self._history = History(settings.history_size)
         self._quality = settings.ocr_quality
         self._worker: _RecognizeWorker | None = None
         self._busy = False  # 防重入：截图会话/识别进行中忽略新触发
+        self._force_pending = False  # 强制更新未处理：gate 主功能
+        self._update_dlg = None
 
         self.setToolTip("snap-ocr 截图取字")
         self._build_menu()
@@ -83,6 +86,103 @@ class TrayApp(QSystemTrayIcon):
                 QSystemTrayIcon.MessageIcon.Warning,
             )
 
+        self._wire_updater()
+        self._apply_update_schedule(settings)
+
+    # ── 更新 ──────────────────────────────
+    def _wire_updater(self) -> None:
+        from app.updater import UpdateDecision
+
+        u = self._updater
+        u.check_done.connect(self._on_update_decision)
+        u.manual_uptodate.connect(
+            lambda v: self.showMessage("snap-ocr", f"已是最新版本 v{v}",
+                                       QSystemTrayIcon.MessageIcon.Information))
+        u.check_failed.connect(
+            lambda msg: self.showMessage("检查更新失败", msg,
+                                         QSystemTrayIcon.MessageIcon.Warning))
+        u.download_progress.connect(self._on_update_progress)
+        u.download_done.connect(self._on_update_ready)
+        u.download_failed.connect(self._on_update_failed)
+        self._update_decision_type = UpdateDecision
+
+    def _apply_update_schedule(self, settings) -> None:
+        """启动 3s 后首查 + 每 24h 复查（托盘常驻数周，强制语义靠周期检查维持）。"""
+        from PySide6.QtCore import QTimer
+
+        timer = getattr(self, "_update_timer", None)
+        if timer is not None:
+            timer.stop()
+        if not settings.update_auto_check:
+            return
+        QTimer.singleShot(3000, self._updater.check)
+        self._update_timer = QTimer(self)
+        self._update_timer.timeout.connect(self._updater.check)
+        self._update_timer.start(24 * 3600 * 1000)
+
+    def _on_update_decision(self, decision, appcast) -> None:
+        if decision is self._update_decision_type.UP_TO_DATE:
+            return  # 手动触发的提示由 manual_uptodate 信号负责
+        self._show_update_dialog(appcast, forced=decision is self._update_decision_type.FORCED)
+
+    def _show_update_dialog(self, appcast, forced: bool) -> None:
+        from app.ui.update_dialog import UpdateDialog
+
+        dlg = self._update_dlg
+        if dlg is not None and dlg.isVisible():
+            dlg.raise_()
+            dlg.activateWindow()
+            return
+        if dlg is not None:
+            dlg.deleteLater()
+        if forced:
+            self._force_pending = True
+        dlg = UpdateDialog(appcast, forced)
+        dlg.update_requested.connect(
+            lambda ac=appcast: self._updater.download_and_stage(ac))
+        self._update_dlg = dlg
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+
+    def _on_update_progress(self, pct: int) -> None:
+        if self._update_dlg is not None:
+            self._update_dlg.set_progress(pct)
+
+    def _on_update_ready(self, plan) -> None:
+        if plan.mode == "auto":
+            if self._update_dlg is not None:
+                self._update_dlg.set_installing()
+            self._updater.execute(plan)
+            QApplication.quit()   # 立即退出，安装脚本等 pid 结束后完成交换
+        else:
+            if self._update_dlg is not None:
+                self._update_dlg.done(0)
+            self._updater.execute(plan)   # open -R 在 Finder 中定位
+            self.showMessage(
+                "请手动安装",
+                "此位置无法自动替换（无写权限或非 Applications）。\n"
+                "已在 Finder 中定位新版，请拖入「应用程序」替换后重新打开。",
+                QSystemTrayIcon.MessageIcon.Information,
+            )
+
+    def _on_update_failed(self, message: str) -> None:
+        if self._update_dlg is not None:
+            self._update_dlg.set_failed(message)
+        else:
+            self.showMessage("更新失败", message, QSystemTrayIcon.MessageIcon.Warning)
+
+    def _blocked_by_force_update(self) -> bool:
+        """强制更新未处理时 gate 主功能，并把弹窗带回前台。"""
+        if not self._force_pending:
+            return False
+        dlg = self._update_dlg
+        if dlg is not None:
+            dlg.show()
+            dlg.raise_()
+            dlg.activateWindow()
+        return True
+
     # ── 菜单 ──────────────────────────────
     def _build_menu(self) -> None:
         menu = QMenu()
@@ -94,6 +194,10 @@ class TrayApp(QSystemTrayIcon):
         settings_act = QAction("设置…", menu)
         settings_act.triggered.connect(lambda _=False: self._open_settings())
         menu.addAction(settings_act)
+
+        update_act = QAction("检查更新…", menu)
+        update_act.triggered.connect(lambda _=False: self._updater.check(manual=True))
+        menu.addAction(update_act)
 
         # 质量档切换
         quality_menu = menu.addMenu("质量档")
@@ -200,10 +304,13 @@ class TrayApp(QSystemTrayIcon):
     def _open_settings(self) -> None:
         from app.ui.settings_window import SettingsWindow
 
+        if self._blocked_by_force_update():
+            return
         win = getattr(self, "_settings_win", None)
         if win is None:
             win = SettingsWindow(self._settings)
             win.settings_saved.connect(self.apply_settings)
+            win.check_update_requested.connect(lambda: self._updater.check(manual=True))
             self._settings_win = win
         win.show()
         win.raise_()
@@ -216,9 +323,13 @@ class TrayApp(QSystemTrayIcon):
         self._client = OCRClient(settings.ocr_base_url, settings.ocr_timeout_s)
         self._quality = settings.ocr_quality
         self._sync_quality_menu()
+        self._updater.apply_settings(settings)
+        self._apply_update_schedule(settings)
         self.settings_reloaded.emit(settings)
 
     def start_flow(self, action: str = "copy") -> None:
+        if self._blocked_by_force_update():
+            return
         if self._busy:
             return
         self._busy = True

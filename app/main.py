@@ -37,7 +37,15 @@ def main() -> int:
         pass
 
     client = OCRClient(settings.ocr_base_url, settings.ocr_timeout_s)
-    tray = TrayApp(settings, client, fallback=SystemBackend())
+
+    from app.login_item import app_bundle_path
+    from app.updater import UpdateController, cleanup_stale_staging
+
+    # 上次更新若中途失败会留 .old-* 备份与 staging 残留，启动时清掉
+    cleanup_stale_staging(app_bundle_path())
+    updater = UpdateController(settings)
+
+    tray = TrayApp(settings, client, fallback=SystemBackend(), updater=updater)
     tray.show()
 
     # 全局热键：controller 装配（pynput 线程经 Signal 桥回主线程）；

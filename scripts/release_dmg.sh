@@ -1,10 +1,11 @@
 #!/bin/bash
 # 发布 DMG：staging（.app + Applications 快捷方式 + 使用说明）→ UDZO 压缩
-# 用法: scripts/release_dmg.sh <版本号>   例: scripts/release_dmg.sh v1.0
+# 用法: scripts/release_dmg.sh [版本号]   版本号缺省读 app/__init__.py 的 __version__
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VER="${1:?用法: $0 <版本号>，如 v1.0}"
+VER="${1:-v$(sed -n 's/^__version__ = "\(.*\)"/\1/p' app/__init__.py)}"
+[ -n "$VER" ] || { echo "❌ 无法确定版本号"; exit 1; }
 APP="dist/snap-ocr.app"
 DMG="dist/snap-ocr-${VER}.dmg"
 STAGE="dist/.dmg-stage"

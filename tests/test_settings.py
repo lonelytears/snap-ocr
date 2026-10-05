@@ -42,6 +42,18 @@ def test_stale_keys_ignored():
     assert s.ocr_quality == "accurate"
 
 
+def test_update_fields_defaults_and_persist():
+    s = get_settings()
+    assert s.update_auto_check is True
+    assert s.update_check_url.endswith("/appcast.json")
+    s2 = update_user_config({"update_auto_check": False,
+                             "update_check_url": "https://example.com/x.json"})
+    assert s2.update_auto_check is False
+    assert s2.update_check_url == "https://example.com/x.json"
+    app.config.get_settings.cache_clear()
+    assert get_settings().update_auto_check is False
+
+
 def test_default_hotkeys_valid():
     s = Settings()
     from app.hotkey import validate_hotkey

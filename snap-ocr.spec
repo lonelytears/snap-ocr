@@ -2,6 +2,14 @@
 # PyInstaller spec：onedir .app（托盘常驻，启动速度与体积优于 onefile）
 # 构建：scripts/build_app.sh 或 uv run pyinstaller --noconfirm snap-ocr.spec
 
+import os
+import re
+
+# 版本号唯一来源是 app/__init__.py 的 __version__（spec/scripts/客户端共用）
+with open(os.path.join(SPECPATH, "app", "__init__.py"), encoding="utf-8") as _f:
+    _m = re.search(r'__version__\s*=\s*"([^"]+)"', _f.read())
+    APP_VERSION = _m.group(1) if _m else "0.0.0"
+
 a = Analysis(
     ["app/main.py"],
     pathex=[],
@@ -51,7 +59,7 @@ app = BUNDLE(
     icon=None,               # 托盘图标程序化绘制，无需 .icns
     info_plist={
         "LSUIElement": True,           # Agent 应用：无 Dock 图标无主菜单
-        "CFBundleShortVersionString": "1.1.0",
+        "CFBundleShortVersionString": APP_VERSION,
         "CFBundleIdentifier": "com.lonelytears.snap-ocr",
         "NSHumanReadableCopyright": "local use",
     },
