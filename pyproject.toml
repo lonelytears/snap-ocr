@@ -1,6 +1,6 @@
 [project]
 name = "snap-ocr"
-version = "1.1.0"
+version = "1.2.0"
 description = "截图取字托盘工具：系统截图交互 → 本地 OCR 服务识别 → 置顶浮窗取词"
 requires-python = ">=3.12,<3.13"
 dependencies = [
